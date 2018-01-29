@@ -42,7 +42,7 @@ class ExpireSnapshots {
         // If not current account, get STS token for assume role
         var sts = new aws.STS({apiVersion: "2016-09-15", "region": region});
         sts.assumeRole({
-          RoleArn:"arn:aws:iam::"+account+":role/tmp-maint-snapshotdeletion",
+          RoleArn:"arn:aws:iam::"+account+":role/maint-snapshotdeletion",
           RoleSessionName: "snapshot-expiration"}, function(err, assumeRole) {
 
           if (err) {
