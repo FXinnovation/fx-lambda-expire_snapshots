@@ -35,46 +35,72 @@ class ExpireSnapshots {
     config.regions.map(function (region) {
       console.log("START snapshot expiration for region: "+region);
 
-      var ec2 = new aws.EC2({apiVersion: "2016-09-15", "region": region});
+      // Cycle through all configured accounts (requires pre-existing role in each account)
+      config.accounts.map(function (account) {
+        console.log("START snapshot expiration for account: "+account);
 
-      // Use filters to find a list of volume Ids to pass to ec2-expire-snapshots
-      // We always want DryRun:false here, because describing the snapshots is a safe, read-only operation
-      ec2.describeSnapshots({ DryRun: false, Filters: config.filters }, function(err, data) {
-        if (err) {
-          return handlerCallback(err, err.stack);
-        }
+        // If not current account, get STS token for assume role
+        var sts = new aws.STS({apiVersion: "2016-09-15", "region": region});
+        sts.assumeRole({
+          RoleArn:"arn:aws:iam::"+account+":role/tmp-maint-snapshotdeletion",
+          RoleSessionName: "snapshot-expiration"}, function(err, assumeRole) {
 
-        var byVolume = ExpireSnapshots.organizeSnapshotsByVolume(data.Snapshots);
-
-        var filteredSnaps = [];
-
-        // For each volume ID, delete volumes according to retention rules.
-        // If dryRun was provided, don't delete just return what we would do.
-        // When we are done, callback to note we are done with the Lambda function
-        async.mapSeries(Object.keys(byVolume), function (volId, volumeCallback) {
-          var filteredSnaps = ExpireSnapshots.selectSnapsToDelete( byVolume[volId], config.retentionRules );
-
-          // Not Debugging! Leave this in.
-          console.info("For %s keeps snaps with these relative ages %j",volId,filteredSnaps.toKeep.reverse());
-
-          // Delete all snapshots, possibly  with the dry run flag,
-          // then callback to note we are done with the current volume
-          var snapsToDeleteParams  = ExpireSnapshots.delParams(filteredSnaps.toDelete, config.dryRun);
-          async.mapSeries(snapsToDeleteParams, ExpireSnapshots.delOneSnap(ec2), volumeCallback);
-        }, function (err, results) {
           if (err) {
-            console.log("ERROR");
-            console.dir(err)
-          } else {
-            console.log("SUCCESS");
+            return handlerCallback(err, err.stack);
           }
+          console.log(assumeRole);
 
-          console.log("RESULTS");
-          console.dir(results)
-          console.log("END snapshot expiration for region: "+region);
-          handlerCallback();
+          var ec2 = new aws.EC2({
+            apiVersion: "2016-09-15",
+            "region": region,
+            credentials: {
+              accessKeyId: assumeRole.Credentials.AccessKeyId,
+              secretAccessKey: assumeRole.Credentials.SecretAccessKey,
+              sessionToken: assumeRole.Credentials.SessionToken,
+            },
+          });
+
+
+          // Use filters to find a list of volume Ids to pass to ec2-expire-snapshots
+          // We always want DryRun:false here, because describing the snapshots is a safe, read-only operation
+          ec2.describeSnapshots({ DryRun: false, Filters: config.filters }, function(err, data) {
+            if (err) {
+              return handlerCallback(err, err.stack);
+            }
+
+            var byVolume = ExpireSnapshots.organizeSnapshotsByVolume(data.Snapshots);
+
+            var filteredSnaps = [];
+
+            // For each volume ID, delete volumes according to retention rules.
+            // If dryRun was provided, don't delete just return what we would do.
+            // When we are done, callback to note we are done with the Lambda function
+            async.mapSeries(Object.keys(byVolume), function (volId, volumeCallback) {
+              var filteredSnaps = ExpireSnapshots.selectSnapsToDelete( byVolume[volId], config.retentionRules );
+
+              // Not Debugging! Leave this in.
+              console.info("For %s keeps snaps with these relative ages %j",volId,filteredSnaps.toKeep.reverse());
+
+              // Delete all snapshots, possibly  with the dry run flag,
+              // then callback to note we are done with the current volume
+              var snapsToDeleteParams  = ExpireSnapshots.delParams(filteredSnaps.toDelete, config.dryRun);
+              async.mapSeries(snapsToDeleteParams, ExpireSnapshots.delOneSnap(ec2), volumeCallback);
+            }, function (err, results) {
+              if (err) {
+                console.log("ERROR");
+                console.dir(err)
+              } else {
+                console.log("SUCCESS");
+              }
+
+              console.log("RESULTS");
+              console.dir(results)
+              console.log("END snapshot expiration for region: "+region);
+              handlerCallback();
+            });
+          });
         });
-      });
+      })
     })
   }
 
@@ -100,7 +126,7 @@ class ExpireSnapshots {
 
     return byVolume;
 
-  } 
+  }
 
   // Given an array of snapshots
   // given as { SnapshotId: snapId : StartTime: 'createdDate' } and grandfatherson retention rules,
@@ -130,7 +156,7 @@ class ExpireSnapshots {
         return moment.duration(moment.utc(_.last(datesToKeep)).diff(dt)).humanize()+' ago'
     });
 
-    return { 
+    return {
         toDelete: snapsToDelete,
         toKeep: datesToKeepHumanized
     }
