@@ -48,7 +48,6 @@ class ExpireSnapshots {
           if (err) {
             return handlerCallback(err, err.stack);
           }
-          console.log(assumeRole);
 
           var ec2 = new aws.EC2({
             apiVersion: "2016-09-15",
@@ -95,7 +94,7 @@ class ExpireSnapshots {
 
               console.log("RESULTS");
               console.dir(results)
-              console.log("END snapshot expiration for region: "+region);
+              console.log("END snapshot expiration for region: "+region+" of account "+account);
               handlerCallback();
             });
           });
