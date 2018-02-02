@@ -94,7 +94,7 @@ class ExpireSnapshots {
 
               console.log("RESULTS");
               console.dir(results)
-              console.log("END snapshot expiration for region: "+region+" of account "+account);
+              console.log("END snapshot expiration for region: "+region+" of account: "+account);
               handlerCallback();
             });
           });
@@ -176,16 +176,27 @@ class ExpireSnapshots {
       const PAUSE_MILLISECONDS = 100; // Avoid AWS throttling.
       setTimeout(function () {
          ec2.deleteSnapshot(params, function(err, data) {
+
            if (err) {
-             if (err.hasOwnProperty("code") && err.code == "DryRunOperation") {
-               //data = err;
-               data = 'DRY RUN: Would delete snapshot-id '+params.SnapshotId;
-               err = null;
+             if (err.hasOwnProperty("code")) {
+               switch(err.code) {
+                case 'DryRunOperation':
+                   //data = err;
+                   data = 'DRY RUN: Would delete snapshot-id '+params.SnapshotId;
+                   err = null;
+                   break;
+                case 'InvalidSnapshot.InUse':
+                   //data = err;
+                   data = 'WARNING: snapshot-id '+params.SnapshotId+' is in use by an AMI, skipping...';
+                   err = null;
+                   break;
+               }
              }
              callback(err, data);
            }
            // Deleting was successful and it was not a dry run. Log and callback
            else {
+             data = 'Deleted snapshot: '+params.SnapshotId;
              callback(null, data);
            }
        });
