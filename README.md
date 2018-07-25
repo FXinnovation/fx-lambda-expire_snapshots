@@ -51,6 +51,10 @@ which looks like this:
       },
       "filters": [ { "Name" : "tag:Name", "Values" : ["automated-backup" ] } ],
       "regions" : ["us-east-1","ca-central-1"],
+      "accounts": [
+        "123467891234",
+        "123467891235"
+      ]      
     }
 ```
 
@@ -60,6 +64,8 @@ see [grandfatherson](https://github.com/RideAmigosCorp/grandfatherson).
 The `filters` are used to select which snapshots you want to prune. For the full list of options see the [docs for the AWS EC2 deleteSnapshot](http://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/EC2.html) API call.
 
 `regions` is used to set the regions you want expire your snapshots in. One Lambda function can expire snapshots in other regions besides where the Lambda is hosted. The default value is the region where the Lambda is running.
+
+`accounts` is a list of target accounts which will be accessed via assume-role (WORK IN PROGRESS)
 
 In the above example, we are searching for all snapshots where the tag "Name" has the value 'automated-backup'
 
@@ -89,5 +95,3 @@ Mark Stosberg <mark@rideamigos.com>
 ## LICENSE
 
 Apache 2. See [LICENSE](./LICENSE)
-
-
